@@ -47,6 +47,11 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -544,43 +549,7 @@ public class MassDeleteActivity extends Activity implements MassDeleteAdapter.On
     }
 
     private void moveToRecycleBin(List<MassDeleteAdapter.SearchResult> resultsToMove) {
-        File recycleBinDir = new File(Environment.getExternalStorageDirectory(), "HFMRecycleBin");
-        if (!recycleBinDir.exists()) {
-            if (!recycleBinDir.mkdir()) {
-                Toast.makeText(this, "Failed to create Recycle Bin folder.", Toast.LENGTH_SHORT).show();
-                return;
-            }
-        }
-
-        int movedCount = 0;
-        for (MassDeleteAdapter.SearchResult result : resultsToMove) {
-            File sourceFile = getFileFromResult(result);
-            if (sourceFile != null && sourceFile.exists()) {
-                File destFile = new File(recycleBinDir, sourceFile.getName());
-
-                if (destFile.exists()) {
-                    String name = sourceFile.getName();
-                    String extension = "";
-                    int dotIndex = name.lastIndexOf(".");
-                    if (dotIndex > 0) {
-                        extension = name.substring(dotIndex);
-                        name = name.substring(0, dotIndex);
-                    }
-                    destFile = new File(recycleBinDir, name + "_" + System.currentTimeMillis() + extension);
-                }
-
-                if (sourceFile.renameTo(destFile)) {
-                    movedCount++;
-                    sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(sourceFile)));
-                    sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(destFile)));
-                } else {
-                    Log.w(TAG, "Failed to move file to recycle bin: " + sourceFile.getAbsolutePath());
-                }
-            }
-        }
-
-        Toast.makeText(this, movedCount + " file(s) moved to Recycle Bin.", Toast.LENGTH_LONG).show();
-        executeQuery(searchInput.getText().toString());
+        new MoveToRecycleTask(resultsToMove).execute();
     }
 
     private void performDelete(final List<MassDeleteAdapter.SearchResult> toDelete) {
@@ -926,5 +895,124 @@ public class MassDeleteActivity extends Activity implements MassDeleteAdapter.On
 			});
 
         dialog.show();
+    }
+
+    private class MoveToRecycleTask extends AsyncTask<Void, Void, List<MassDeleteAdapter.SearchResult>> {
+        private AlertDialog progressDialog;
+        private List<MassDeleteAdapter.SearchResult> resultsToMove;
+        private Context context;
+
+        public MoveToRecycleTask(List<MassDeleteAdapter.SearchResult> resultsToMove) {
+            this.resultsToMove = resultsToMove;
+            this.context = MassDeleteActivity.this;
+        }
+
+        @Override
+        protected void onPreExecute() {
+            AlertDialog.Builder builder = new AlertDialog.Builder(context);
+            View dialogView = LayoutInflater.from(context).inflate(R.layout.dialog_progress_simple, null);
+            TextView progressText = dialogView.findViewById(R.id.progress_text);
+            progressText.setText("Moving files to Recycle Bin...");
+            builder.setView(dialogView);
+            builder.setCancelable(false);
+            progressDialog = builder.create();
+            progressDialog.show();
+        }
+
+        @Override
+        protected List<MassDeleteAdapter.SearchResult> doInBackground(Void... voids) {
+            File recycleBinDir = new File(Environment.getExternalStorageDirectory(), "HFMRecycleBin");
+            if (!recycleBinDir.exists()) {
+                if (!recycleBinDir.mkdir()) {
+                    return new ArrayList<>();
+                }
+            }
+
+            List<MassDeleteAdapter.SearchResult> movedResults = new ArrayList<>();
+            for (MassDeleteAdapter.SearchResult result : resultsToMove) {
+                File sourceFile = getFileFromResult(result);
+                if (sourceFile != null && sourceFile.exists()) {
+                    File destFile = new File(recycleBinDir, sourceFile.getName());
+
+                    if (destFile.exists()) {
+                        String name = sourceFile.getName();
+                        String extension = "";
+                        int dotIndex = name.lastIndexOf(".");
+                        if (dotIndex > 0) {
+                            extension = name.substring(dotIndex);
+                            name = name.substring(0, dotIndex);
+                        }
+                        destFile = new File(recycleBinDir, name + "_" + System.currentTimeMillis() + extension);
+                    }
+
+                    boolean moveSuccess = false;
+                    boolean isSourceOnSd = StorageUtils.isFileOnSdCard(context, sourceFile);
+
+                    if (isSourceOnSd) {
+                        if (copyFile(sourceFile, destFile)) {
+                            if (StorageUtils.deleteFile(context, sourceFile)) {
+                                moveSuccess = true;
+                            } else {
+                                destFile.delete();
+                            }
+                        }
+                    } else {
+                        if (sourceFile.renameTo(destFile)) {
+                            moveSuccess = true;
+                        }
+                    }
+
+                    if (moveSuccess) {
+                        movedResults.add(result);
+                        sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(sourceFile)));
+                        sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(destFile)));
+                    } else {
+                        Log.w(TAG, "Failed to move file to recycle bin: " + sourceFile.getAbsolutePath());
+                    }
+                }
+            }
+            return movedResults;
+        }
+
+        @Override
+        protected void onPostExecute(List<MassDeleteAdapter.SearchResult> movedResults) {
+            progressDialog.dismiss();
+
+            if (movedResults.isEmpty() && !resultsToMove.isEmpty()) {
+                Toast.makeText(context, "Failed to move some or all files.", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(context, movedResults.size() + " file(s) moved to Recycle Bin.", Toast.LENGTH_LONG).show();
+            }
+
+            if (!movedResults.isEmpty()) {
+                displayList.removeAll(movedResults);
+                adapter.notifyDataSetChanged();
+            }
+        }
+
+        private boolean copyFile(File source, File destination) {
+            InputStream in = null;
+            OutputStream out = null;
+            try {
+                in = new FileInputStream(source);
+                out = new FileOutputStream(destination);
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = in.read(buf)) > 0) {
+                    out.write(buf, 0, len);
+                }
+                return true;
+            } catch (IOException e) {
+                Log.e(TAG, "Standard file copy failed, attempting with StorageUtils", e);
+                return StorageUtils.copyFile(context, source, destination);
+            } finally {
+                try {
+                    if (in != null) in.close();
+                    if (out != null) out.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 }
