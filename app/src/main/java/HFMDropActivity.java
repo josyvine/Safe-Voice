@@ -18,7 +18,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat; // <<< THIS LINE HAS BEEN ADDED
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -269,9 +269,8 @@ public class HFMDropActivity extends Activity {
             Toast.makeText(this, "Authentication error. Please restart the app.", Toast.LENGTH_SHORT).show();
             return;
         }
-        
-        // --- THIS IS THE UPDATE ---
-        // Add the receiver's ID to the document to satisfy the new security rules.
+
+        // Add the receiver's ID to the document to satisfy security rules.
         Map<String, Object> updates = new HashMap<>();
         updates.put("status", "accepted");
         updates.put("receiverId", currentUser.getUid());
@@ -284,8 +283,12 @@ public class HFMDropActivity extends Activity {
                     Intent intent = new Intent(HFMDropActivity.this, DownloadService.class);
                     intent.putExtra("drop_request_id", request.id);
                     intent.putExtra("sender_id", request.senderId);
-                    intent.putExtra("filename", request.filename);
-                    intent.putExtra("filesize", request.filesize);
+
+                    // Bug Fix: Pass both original filename (for saving) and cloaked filename (for requesting)
+                    intent.putExtra("original_filename", request.filename);
+                    intent.putExtra("cloaked_filename", request.cloakedFilename);
+
+                    intent.putExtra("filesize", request.filesize); // This is the cloaked file size
                     ContextCompat.startForegroundService(HFMDropActivity.this, intent);
                 }
             })
@@ -326,10 +329,11 @@ public class HFMDropActivity extends Activity {
         public String senderId;
         public String senderUsername;
         public String receiverUsername;
-        public String filename;
-        public long filesize;
+        public String filename;         // This is the original filename, for display purposes.
+        public String cloakedFilename;  // The filename to request from the sender's server.
+        public long filesize;           // This is the size of the cloaked file.
         public String status;
-        public String receiverId; // Added for security rules
+        public String receiverId;       // Added for security rules
 
         public DropRequest() {} // Needed for Firestore
     }
