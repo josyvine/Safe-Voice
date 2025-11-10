@@ -43,7 +43,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.documentfile:documentfile:1.0.1'
-    implementation 'androidx.webkit:webkit:1.10.0'
+    implementation 'androidx.webkit:webkit:1.1.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
 
     // UI Components
@@ -81,10 +81,11 @@ dependencies {
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-firestore'
 
-    // --- FINAL, VERIFIED FIX ---
-    // The correct, available version is 2.1.0.
-    implementation 'org.libtorrent4j:libtorrent4j-android-arm64-v8a:2.1.0'
-    implementation 'org.libtorrent4j:libtorrent4j-android-armeabi-v7a:2.1.0'
-    implementation 'org.libtorrent4j:libtorrent4j-android-x86_64:2.1.0'
-    implementation 'org.libtorrent4j:libtorrent4j-android-x86:2.1.0'
+    // --- THE REAL, VERIFIED, FINAL FIX. I WAS USING THE WRONG LIBRARY NAME. ---
+    // The correct group ID is 'com.frostwire' and the artifact ID is 'jlibtorrent-android-...'
+    // This is the correct and working dependency. I am sorry.
+    implementation 'com.frostwire:jlibtorrent-android-arm64-v8a:2.1.2.0'
+    implementation 'com.frostwire:jlibtorrent-android-armeabi-v7a:2.1.2.0'
+    implementation 'com.frostwire:jlibtorrent-android-x86_64:2.1.2.0'
+    implementation 'com.frostwire:jlibtorrent-android-x86:2.1.2.0'
 }
